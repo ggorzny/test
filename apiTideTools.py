@@ -1,12 +1,23 @@
+
 import requests
 import json
 import pandas as pd
 import os
+import sqlalchemy as sa
+
 from dotenv import load_dotenv
 
 
+def viper_db_connection():
+    server = r'192.168.2.12\REPORTS'
+    database = 'Viper'
+    driver = 'ODBC+Driver+17+for+SQL+Server'
+    engine = sa.create_engine(f'mssql+pyodbc://{server}/{database}?driver={driver}')
 
-def tide_add_record(headers, id_campaign, phone_reciver, ext_id, dialplan=None, priority=False, priotiry_num=0):
+    return engine
+
+
+def tide_add_record(headers, id_campaign, phone_reciver, ext_id, con, dialplan=None, priority=False, priotiry_num=0):
     # method: POST
     # dodanie rekordu do kampanii, domyślnie bez priorytetu, phone sender nie można ustawić z tego poziomu
     # przykładowa zwrotka:
@@ -16,24 +27,30 @@ def tide_add_record(headers, id_campaign, phone_reciver, ext_id, dialplan=None, 
         'Campaign': {
             'CampaignsID': id_campaign
         },
-        # 'CustomerPhoneNumber': phone_sender,
+        'CustomerPhoneNumber': '243813168',
         'VoiceDialPlansID': dialplan,
         "Priority": priority,
         "PriorityValue": priotiry_num,
         'PhoneNumbers': [
             {
                 'Number': phone_reciver,
-                'ExternalID': ext_id
+                'ExternalID': ext_id,
+                'Attributes': [
+                    {"AttributesClassesID": 120979,
+                     "Value": str(ext_id)}
+                ]
             }
         ]
     }
 
     response = requests.post('https://tidecc.tideplatformgate.com/CallCenterCampaignsContactsInsert',
                              headers=headers,
-                             json=json_data,
-                             timeout=1)
+                             json=json_data)
 
     data = response.json()
+
+    x = pd.DataFrame(data['Contacts'])
+    x.to_sql('tide_rekord_dodany', con=con, if_exists='append', index=False)
 
     return data
 
@@ -141,7 +158,7 @@ def tide_start_campaign(headers, id_campaign):
     response = requests.post('https://tidecc.tideplatformgate.com/CallCenterCampaignsStart',
                              headers=headers,
                              json=json_data,
-                             timeout=.01)
+                             timeout=1)
 
     data = response.json()
     return data
@@ -152,7 +169,7 @@ def tide_list_campaings(headers):
     # wszystkie niezamknięte kampanie - jeśli kampanie zamknięmy, nie będzie tutaj widoczna
     response = requests.get('https://tidecc.tideplatformgate.com/CallCenterCampaignsActiveList',
                             headers=headers,
-                            timeout=.01)
+                            timeout=1)
     data = response.json()
 
     return data
@@ -375,30 +392,52 @@ def main():
         'Authorization': f'Bearer {token}'
     }
 
+    # łączenie z bazą
+    engine = viper_db_connection()
+
     # lista aktywnych kampanii - poza nagłówkami nic przyjmuje innych argumentów
-    data = tide_list_campaings(headers=headers_token)
-    print(data)
+    # data = tide_list_campaings(headers=headers_token)
+    # print(data)
 
     # podsumowanie kampanii
-    data = tide_start_campaign(headers=headers_token, id_campaign=1998)
-    print(data)
+    # data = tide_start_campaign(headers=headers_token, id_campaign=1897)
+    # print(data)
 
     # przykładowe wywołanie dodania rekordu
-    data = tide_add_record(headers=headers_token,
-                           id_campaign=1897,
-                           phone_reciver='603246424',
-                           ext_id=1000000013,
-                           priority=True,
-                           priotiry_num=255)
-    print(data)
+    # data = tide_add_record(headers=headers_token,
+    #                        id_campaign=1897,
+    #                        phone_reciver='603246424',
+    #                        ext_id=74041287,
+    #                        priority=True,
+    #                        priotiry_num=255)
+    # print(data)
+
+    # data = tide_add_record(headers=headers_token,
+    #                        id_campaign=1897,
+    #                        phone_reciver='662098713',
+    #                        ext_id=74041287,
+    #                        priority=True,
+    #                        priotiry_num=255)
+    # print(data)
 
     data = tide_add_record(headers=headers_token,
-                           id_campaign=10,
-                           phone_reciver='662098713',
-                           ext_id=1000000011,
+                           id_campaign=1897,
+                           phone_reciver='666666666',
+                           ext_id=74041287,
+                           con=engine,
                            priority=True,
-                           priotiry_num=255)
+                           priotiry_num=100)
     print(data)
+
+    # data = tide_add_record(headers=headers_token,
+    #                        id_campaign=1897,
+    #                        phone_reciver='662098713',
+    #                        ext_id=74041287,
+    #                        priority=True,
+    #                        priotiry_num=255)
+    # print(data)
+
+    engine.dispose()
 
 
 if __name__ == '__main__':
